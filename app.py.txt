@@ -1,0 +1,73 @@
+import streamlit as st
+import pandas as pd
+import folium
+from folium.plugins import Search
+from geopy.geocoders import Nominatim
+from geopy.extra.rate_limiter import RateLimiter
+from streamlit_folium import st_folium
+
+st.set_page_config(page_title="Mapa Interativo Lexxa", layout="wide")
+st.title("📍 Mapa Interativo por Representante – Lexxa")
+
+uploaded_file = st.file_uploader("Faça upload da planilha Excel (.xlsx)", type="xlsx")
+
+if uploaded_file:
+    df = pd.read_excel(uploaded_file, sheet_name="Planilha1")
+    df = df[['Municípios', 'Representante']].drop_duplicates()
+
+    geolocator = Nominatim(user_agent="mapa_lexxa_web")
+    geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
+
+    def buscar_coordenadas(municipio):
+        local = geocode(f"{municipio}, Minas Gerais, Brazil")
+        if local:
+            return pd.Series([local.latitude, local.longitude])
+        return pd.Series([None, None])
+
+    df[['Latitude', 'Longitude']] = df['Municípios'].apply(buscar_coordenadas)
+    df = df.dropna(subset=['Latitude', 'Longitude'])
+
+    mapa = folium.Map(location=[-18.5, -44], zoom_start=6)
+
+    logo_html = '''
+    <div style="position: fixed; 
+                top: 10px; left: 10px; width: 160px; height: 60px; 
+                background-color: white; z-index: 9999;
+                border: 1px solid lightgray; border-radius: 8px;
+                text-align: center;">
+        <a href="https://www.lexxabagno.com.br/" target="_blank">
+            <img src="https://www.lexxabagno.com.br/wp-content/uploads/2023/08/Logo-Lexxa-Colorido.png" 
+                 width="150" style="margin-top:5px;">
+        </a>
+    </div>
+    '''
+    mapa.get_root().html.add_child(folium.Element(logo_html))
+
+    cores_disponiveis = [
+        'red', 'blue', 'green', 'purple', 'orange', 'darkred', 'lightred',
+        'beige', 'darkblue', 'darkgreen', 'cadetblue', 'darkpurple',
+        'white', 'pink', 'lightblue', 'lightgreen', 'gray', 'black', 'lightgray'
+    ]
+    cores = {}
+    representantes = df['Representante'].unique()
+    for i, rep in enumerate(representantes):
+        cores[rep] = cores_disponiveis[i % len(cores_disponiveis)]
+
+    marker_group = folium.FeatureGroup(name="Municípios").add_to(mapa)
+    for _, row in df.iterrows():
+        cor = cores[row['Representante']]
+        folium.Marker(
+            location=[row['Latitude'], row['Longitude']],
+            popup=f"{row['Municípios']} - {row['Representante']}",
+            icon=folium.Icon(color=cor)
+        ).add_to(marker_group)
+
+    Search(
+        layer=marker_group,
+        search_label='popup',
+        placeholder='Buscar cidade...',
+        collapsed=False
+    ).add_to(mapa)
+
+    folium.LayerControl(collapsed=False).add_to(mapa)
+    st_folium(mapa, width=1200, height=600)

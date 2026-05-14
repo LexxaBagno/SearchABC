@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Busca Lexxa | Representantes</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <style>
+        body { background-color: #f4f7f6; font-family: 'Segoe UI', sans-serif; }
+        .card-busca { border: none; border-radius: 15px; box-shadow: 0 8px 25px rgba(0,0,0,0.05); }
+        .rep-card { border-radius: 12px; border: 1px solid #eee; transition: 0.3s; background: white; }
+        .rep-card:hover { transform: translateY(-3px); box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        .badge-top { background-color: #1a1a1a; color: #fff; font-weight: bold; border-radius: 6px; padding: 5px 10px; font-size: 0.75rem; }
+        .btn-voice.recording { background-color: #dc3545; color: white; animation: pulse 1s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+    </style>
+</head>
+<body>
+
+<div class="container py-4">
+    <div class="card card-busca p-4 mb-4">
+        <h4 class="text-center mb-4 fw-bold">Representantes Lexxa</h4>
+        <div class="row g-3">
+            <div class="col-12 col-md-4">
+                <label class="form-label small fw-bold">Região</label>
+                <select id="selRegiao" class="form-select" onchange="filtrar()">
+                    <option value="">Todas</option>
+                    <option value="Norte">Norte</option>
+                    <option value="Nordeste">Nordeste</option>
+                    <option value="Centro-Oeste">Centro-Oeste</option>
+                    <option value="Sudeste">Sudeste</option>
+                    <option value="Sul">Sul</option>
+                </select>
+            </div>
+            <div class="col-12 col-md-3">
+                <label class="form-label small fw-bold">Estado (UF)</label>
+                <select id="selUF" class="form-select" onchange="filtrar()">
+                    <option value="">Todas</option>
+                </select>
+            </div>
+            <div class="col-12 col-md-5">
+                <label class="form-label small fw-bold">Cidade</label>
+                <div class="input-group">
+                    <input type="text" id="inpCidade" class="form-control" placeholder="Falar ou digitar cidade..." oninput="filtrar()">
+                    <button class="btn btn-outline-primary" id="btnVoz"><i class="bi bi-mic-fill"></i></button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="listaResultados" class="row g-3"></div>
+</div>
+
+<script>
+    let db = [];
+
+    async function carregarDados() {
+        try {
+            const response = await fetch('dados.json');
+            let textoJson = await response.text();
+            
+            // CORREÇÃO ULTRA RESISTENTE: Procura por "RANK": seguido de espaços vazios antes da vírgula ou chave e corrige para ""
+            textoJson = textoJson.replace(/"RANK"\s*:\s*,\s*/g, '"RANK": "",');
+            textoJson = textoJson.replace(/"RANK"\s*:\s*}\s*/g, '"RANK": ""}');
+            
+            // Uma limpeza extra caso tenha ficado alguma vírgula órfã no final de listas
+            textoJson = textoJson.replace(/,\s*]/g, ']');
+            textoJson = textoJson.replace(/,\s*}/g, '}');
+
+            const data = JSON.parse(textoJson);
+            db = data.representantes || data; 
+            
+            popularUFs();
+            filtrar();
+        } catch (erro) {
+            document.getElementById('listaResultados').innerHTML = 
+                `<div class="alert alert-danger text-center">
+                    <strong>Erro de leitura técnica!</strong><br>
+                    Certifique-se de que está abrindo o projeto usando o <strong>Live Server</strong> no VS Code ou que subiu os arquivos para o <strong>GitHub Pages</strong>. O navegador bloqueia a leitura direta (dois cliques no arquivo).
+                 </div>`;
+            console.error("Erro ao processar o JSON:", erro);
+        }
+    }
+
+    function popularUFs() {
+        const selUF = document.getElementById('selUF');
+        const ufs = [...new Set(db.map(x => x.UF).filter(Boolean))].sort();
+        selUF.innerHTML = '<option value="">Todas</option>';
+        ufs.forEach(uf => {
+            const opt = document.createElement('option');
+            opt.value = uf; opt.textContent = uf;
+            selUF.appendChild(opt);
+        });
+    }
+
+    function filtrar() {
+        const regiao = document.getElementById('selRegiao').value;
+        const uf = document.getElementById('selUF').value;
+        const cidade = document.getElementById('inpCidade').value.toLowerCase();
+
+        const filtrados = db.filter(item => {
+            const matchRegiao = regiao === "" || (item.Regiao && item.Regiao.toLowerCase().includes(regiao.toLowerCase()));
+            const matchUF = uf === "" || item.UF === uf;
+            const matchCidade = item.Cidade ? item.Cidade.toLowerCase().includes(cidade) : false;
+            return matchRegiao && matchUF && matchCidade;
+        });
+
+        const container = document.getElementById('listaResultados');
+        container.innerHTML = filtrados.length ? "" : '<div class="text-center p-5 text-muted">Nenhum representante encontrado.</div>';
+
+        filtrados.forEach(rep => {
+            const rankValor = (rep.RANK && String(rep.RANK).trim() !== "") ? rep.RANK : "-";
+            
+            container.innerHTML += `
+                <div class="col-12 col-md-6 col-lg-4">
+                    <div class="card p-3 rep-card h-100 shadow-sm">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="fw-bold mb-0 text-dark">${rep.Representante || 'Sem Nome'}</h6>
+                                <small class="text-muted">${rep.Cidade || ''} - ${rep.UF || ''}</small>
+                                <br><span class="badge bg-light text-muted border mt-1" style="font-size: 0.65rem;">${rep.Regiao || ''}</span>
+                            </div>
+                            <div class="text-end">
+                                <span class="badge-top text-uppercase">TOP ${rankValor}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+        });
+    }
+
+    // Lógica de Voz
+    const btnVoz = document.getElementById('btnVoz');
+    const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (Speech) {
+        const recognition = new Speech();
+        recognition.lang = 'pt-BR';
+        
+        btnVoz.onclick = () => { recognition.start(); btnVoz.classList.add('recording'); };
+        
+        recognition.onresult = (e) => {
+            document.getElementById('inpCidade').value = e.results[0][0].transcript.replace('.', '');
+            btnVoz.classList.remove('recording');
+            filtrar();
+        };
+        
+        recognition.onerror = () => btnVoz.classList.remove('recording');
+        recognition.onspeechend = () => btnVoz.classList.remove('recording');
+    }
+
+    carregarDados();
+</script>
+</body>
+</html>
